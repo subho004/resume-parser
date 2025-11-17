@@ -1,0 +1,25 @@
+# Bytecode / cache
+__pycache__/
+*.py[cod]
+*.so
+
+# Virtual environments
+.venv/
+venv/
+
+# Tooling / editors
+.vscode/
+.idea/
+.DS_Store
+
+# Local environment configuration
+.env
+
+# Test / coverage artefacts
+.pytest_cache/
+.coverage
+coverage.xml
+
+# Generated files
+dist/
+build/
