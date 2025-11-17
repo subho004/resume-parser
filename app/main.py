@@ -10,6 +10,7 @@ from .models import AgentResult, AnalysisResponse, HealthResponse
 from .pdf_parser import ResumeParsingError, resume_parser
 
 ALLOWED_RESUME_TYPES = {"application/pdf"}
+MAX_RESUME_BYTES = 10 * 1024 * 1024  # 10 MB limit
 
 app = FastAPI(
     title="Resume vs JD Analyzer",
@@ -47,6 +48,13 @@ async def analyze_resume(
         )
     print(f"[analyze_resume] Received resume file: {resume.filename} of type {resume.content_type}.")
     resume_bytes = await resume.read()
+    if len(resume_bytes) == 0:
+        raise HTTPException(status_code=400, detail="Uploaded resume is empty.")
+    if len(resume_bytes) > MAX_RESUME_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail="Resume exceeds 10 MB limit. Please upload a smaller PDF.",
+        )
     try:
         print("[analyze_resume] Starting PDF resume parsing.")
         resume_text = resume_parser.convert_pdf_bytes(resume_bytes, file_name=resume.filename)

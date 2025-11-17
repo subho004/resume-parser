@@ -1,8 +1,0 @@
-fast api setup where I've a rest api that'll do the following
-1. input is resume pdf which parse it with markitdown and pass the text
-2. a set of requirements or job description
-
-agent workflow
-1. agent 1 will compare the resume content vs the requirements of jd and point out the similarities and the good things
-2. agent 2 will find out the missing things or drawbacks
-3. agent 3 will compile the results and give the answer in plain text
