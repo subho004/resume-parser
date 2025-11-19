@@ -2,7 +2,7 @@
 
 from typing import List, Optional, TypedDict
 
-from pydantic import BaseModel, Field
+from pydantic import AnyHttpUrl, BaseModel, Field
 
 
 class AgentResult(BaseModel):
@@ -32,9 +32,18 @@ class HealthResponse(BaseModel):
     status: str
     detail: str
 
+
+class WebsiteSummaryResponse(BaseModel):
+    """Response payload for summarizing arbitrary web pages."""
+
+    website_url: AnyHttpUrl
+    website_details: str
+    summary: str
+
+
 class GraphState(TypedDict):
-    resume:str
-    jd:str
+    resume: str
+    jd: str
     agent1_output: dict | None
     agent2_output: dict | None
     agent3_output: dict | None

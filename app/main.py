@@ -6,8 +6,10 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
 from .agents import AgentExecutionError, AgentOutput, run_agent_workflow
-from .models import AgentResult, AnalysisResponse, HealthResponse
+from .models import AgentResult, AnalysisResponse, HealthResponse, WebsiteSummaryResponse
 from .pdf_parser import ResumeParsingError, resume_parser
+from .webagent import web_agent
+from .website_parser import extract_content
 
 ALLOWED_RESUME_TYPES = {"application/pdf"}
 MAX_RESUME_BYTES = 10 * 1024 * 1024  # 10 MB limit
@@ -34,6 +36,32 @@ async def healthcheck() -> HealthResponse:
 
 def _as_agent_result(output: AgentOutput) -> AgentResult:
     return AgentResult(name=output.name, summary=output.summary, highlights=output.highlights)
+
+
+@app.post("/website-summary", response_model=WebsiteSummaryResponse)
+async def summarize_website(
+    website_url: str = Form(..., description="Fully qualified URL to summarize."),
+) -> WebsiteSummaryResponse:
+    """Summarize an arbitrary web page into a compact set of key points."""
+    try:
+        extracted = await extract_content(website_url)
+        website_detail = extracted if isinstance(extracted, str) else str(extracted)
+        if not website_detail.strip():
+            raise ValueError("No readable text could be extracted from the provided URL.")
+    except Exception as exc:  # pragma: no cover - defensive
+        raise HTTPException(status_code=400, detail=f"Failed to fetch website content: {exc}") from exc
+
+    try:
+        summary_raw = await web_agent(website_detail)
+        summary_text = summary_raw if isinstance(summary_raw, str) else str(summary_raw)
+    except Exception as exc:  # pragma: no cover - defensive
+        raise HTTPException(status_code=502, detail=f"Failed to summarize website content: {exc}") from exc
+
+    return WebsiteSummaryResponse(
+        website_url=website_url,
+        website_details=website_detail,
+        summary=summary_text,
+    )
 
 
 @app.post("/analyze", response_model=AnalysisResponse)

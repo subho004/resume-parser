@@ -1,58 +1,97 @@
 # Resume vs JD Analyzer
 
-FastAPI service that ingests a resume PDF, parses it with [MarkItDown](https://github.com/microsoft/markitdown), and runs a three-step Groq-powered LangGraph workflow:
+FastAPI service that compares a PDF resume against a job description using MarkItDown for parsing and a Groq-powered LangGraph workflow. It also exposes a helper endpoint to summarize any public web page.
 
-1. **Similarity agent** – highlights skills/phrases shared between the resume and JD.
-2. **Gap agent** – describes what’s missing from the resume.
-3. **Compilation agent** – summarizes the first two agents for quick sharing.
+## Features
 
-The API returns each agent’s highlights plus the compiled summary.
+- Resume parsing with [MarkItDown](https://github.com/microsoft/markitdown) to convert PDFs into markdown/text without shelling out to external binaries.
+- Three Groq-backed agents (similarity, gap, compilation) orchestrated by LangGraph (`app/agents.py`) to surface overlaps, gaps, and an overall takeaway.
+- `/analyze` endpoint validates uploads (PDF-only, 10 MB max), emits per-agent highlights, and includes a resume excerpt for debugging.
+- `/website-summary` endpoint fetches arbitrary URLs, extracts the readable text with MarkItDown, and summarizes them with Groq (`app/webagent.py`).
+- Simple `/health` probe for readiness and full CORS support so frontends can call it directly.
 
-## Getting started
+## Prerequisites
+
+- Python 3.10+ (tested with 3.11) and `pip`
+- Groq API key with access to the referenced model
+
+## Setup
 
 ```bash
 python -m venv venv
 source venv/bin/activate
 pip install --upgrade pip
 pip install -r requirements.txt
-```
 
-Provide Groq credentials via `.env` (copy `.env.sample`):
-
-```bash
 cp .env.sample .env
 ```
 
-Edit `.env` with your `GROQ_API_KEY` and optional tuning (`GROQ_MODEL`, `GROQ_TEMPERATURE`, `GROQ_MAX_TOKENS`).
+Edit `.env` with your Groq token and (optionally) override model parameters.
 
-## Running the API
+## Configuration
+
+| Variable | Description | Default |
+| --- | --- | --- |
+| `GROQ_API_KEY` | Required Groq token used by both the resume agents and the website summarizer | — |
+| `GROQ_MODEL` | Model slug sent to `langchain_groq.ChatGroq` | `llama-3.1-8b-instant` |
+| `GROQ_TEMPERATURE` | Sampling temp for all agents | `0.2` |
+| `GROQ_MAX_TOKENS` | Hard cap per agent response | `800` |
+
+`app/config.py` loads the variables via `pydantic-settings` and keeps them cached for subsequent requests.
+
+## Run the API
 
 ```bash
 source venv/bin/activate
 uvicorn app.main:app --reload
 ```
 
-Health check: `GET http://localhost:8000/health`
+The app starts on `http://localhost:8000` by default. Interactive docs will be available at `/docs`.
 
-### Analyze endpoint
+## API Endpoints
 
-`POST /analyze` accepts a multipart form with:
+### `GET /health`
 
-- `job_description` (string)
-- `resume` (PDF file upload)
+Returns a simple `{ "status": "ok" }` payload so Cloud Run/containers can perform liveness checks.
 
-Example (assuming a file named `resume.pdf` in the repo root):
+### `POST /analyze`
+
+Multipart form fields:
+
+- `job_description` – plain text
+- `resume` – PDF file (`application/pdf`, ≤ 10 MB)
+
+Example:
 
 ```bash
 curl -X POST "http://localhost:8000/analyze" \
-  -F "job_description=Looking for a senior Python engineer experienced with FastAPI and Groq." \
-  -F "resume=@resume.pdf;type=application/pdf"
+  -F 'job_description=Senior Python engineer with FastAPI and Groq experience.' \
+  -F 'resume=@resume.pdf;type=application/pdf'
 ```
 
-The JSON response includes character counts, every agent’s summary/highlights, and Agent 3’s combined summary.
+Response:
 
-## Development notes
+- Character counts for resume + JD
+- Three `agent_results` entries (similarities, gaps, compiled takeaways) with summaries and highlight bullets
+- `combined_summary` (Agent 3)
+- `resume_excerpt` (first 500 chars) to inspect parsing quality
 
-- Resume parsing happens in `app/pdf_parser.py`; logs prefixed with `[ResumeParser]` help debug parsing issues.
-- LLM/agent configuration lives in `app/agents.py`, with prompts and the LangGraph pipeline.
-- Adjust dependencies in `requirements.txt` as needed; FastAPI + Uvicorn run the API server.
+### `POST /website-summary`
+
+Form field:
+
+- `website_url` – Fully qualified URL to summarize
+
+```bash
+curl -X POST "http://localhost:8000/website-summary" \
+  -F "website_url=https://groq.com/blog"
+```
+
+Response contains the canonicalized URL, extracted text, and a Groq-generated summary.
+
+## Implementation Notes
+
+- PDF parsing lives in `app/pdf_parser.py`; noisy logs prefixed with `[ResumeParser]` make it easier to trace parsing issues.
+- LangGraph workflow definitions and Groq prompts are in `app/agents.py`; adjust prompts or agent order there.
+- The MarkItDown-backed website scraper is in `app/website_parser.py`, while the summarization prompt sits in `app/webagent.py`.
+- FastAPI routes are defined in `app/main.py`; tweak middleware, validation rules, or response models there.
